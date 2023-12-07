@@ -72,9 +72,10 @@ On charge les librairies R nécessaires, ainsi que les données. Quelques variab
 ```{r}
 library(tidyverse)
 library(COGiter)
-library(corrplot)
 library(PerformanceAnalytics)
 library(mapview)
+library(readxl)
+library(downloadthis)
 
 data <- readxl::read_xlsx("../raw_data/communes_cgtv_variables.xlsx") %>% 
   select(comm_id = fid,
