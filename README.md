@@ -36,10 +36,11 @@ En outre, pour du travail collaboratif sur le projet, il faut disposer
 d’un compte [Github](https://github.com) et connecter RStudio à Github.
 
 Une fois la machine configurée, installer les packages nécessaires qui
-sont sur le dépôt CRAN :
+sont sur le dépôt du [CRAN](https://cran.r-project.org/) :
 
 ``` r
-mes_packages <- c("tidyverse",
+mes_packages <- c("MASS",
+                  "tidyverse",
                   "remotes",
                   "PerformanceAnalytics",
                   "mapview",
@@ -50,8 +51,8 @@ mes_packages <- c("tidyverse",
 install.packages(setdiff(mes_packages, rownames(installed.packages())))
 ```
 
-Ajout, depuis son dépôt Github, du package `COGiter` qui contient le
-découpage communal pour les cartes.
+Installer ensuite, depuis son dépôt Github, du package `COGiter` qui
+contient le découpage communal pour les cartes.
 
 ``` r
 remotes::install_github("MaelTheuliere/COGiter")
@@ -127,15 +128,17 @@ Ces paramètres concernent :
   potentiel de richesse si chaque commune avait été très bien
   prospectée. Dans l’exemple ci-dessus, par défaut il est fixé à 20000.
   La richesse potentielle d’une commune est donc la richesse qui serait
-  observée si la commune avait connu un effort de peospection de 20000
+  observée si la commune avait connu un effort de prospection de 20000
   observations.  
 - `nb_obs_mini` : Nombre minimum d’observations pour qu’une commune soit
-  incluse au jeu de données de calage du modèle. En effet, les communes
-  les moins prospectées ne renseignenet pas réellement sur la richesse
-  potentielle. Par défaut, `nb_obs_mini` est fixé à 200 observations.
+  incluse dans le jeu de données de calage du modèle. En effet, les
+  communes les moins prospectées ne renseignent pas réellement sur la
+  richesse potentielle. Par défaut, `nb_obs_mini` est fixé à 200
+  observations.
 
 Pour obtenir les résultats en faisant varier les paramètres, cliquer sur
-la petite flêche à droite du bonton “Knit” pour dérouler le menu.
+la petite flêche à droite du bouton “Knit” pour dérouler le menu.
+Choisir *Knit with parameters*.
 
 ![](assets/img8.png)
 
