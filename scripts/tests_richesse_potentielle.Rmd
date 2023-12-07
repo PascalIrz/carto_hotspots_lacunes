@@ -1,0 +1,227 @@
+---
+title: "Tests richesse potentielle CBN"
+author: "OFB - DR Bretagne"
+date: "`r format(Sys.time(), 'Le %d/%m/%Y')`"
+output:
+  bookdown::html_document2:
+    number_sections: yes
+    global_numbering: yes
+    toc: yes
+    toc_float:
+      toc_collapsed: yes
+      toc_depth: 2
+    code_folding: hide
+params:
+  nb_obs_simu: 20000
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Objectif
+
+Le présent document vise à explorer si les données présentes dans la base du CBN Brest, couplées avec la carte des "Grands Types de Végétation", permet d'estimer la richesse potentielle en espèces de chaque commune. 
+
+# Chargement des données et packages
+
+On renomme quelques variables pour avoir des noms plus explicites.
+
+```{r}
+library(tidyverse)
+library(COGiter)
+library(corrplot)
+library(PerformanceAnalytics)
+library(mapview)
+
+data <- readxl::read_xlsx("../raw_data/communes_cgtv_variables.xlsx") %>% 
+  select(comm_id = fid,
+         comm_insee = cd_insee,
+         comm_surf = shape_area,
+         nb_esp,
+         nb_obs,
+         gtm_shannon = shannon,
+         gtm_heme = hemerobie,
+         gtm_nat = richesse,
+         gtm_tot = nb_gtm
+         )
+
+quant_data <- data %>% 
+  select(-comm_id) %>% 
+  column_to_rownames("comm_insee")
+```
+
+# Corrélations bivariées
+
+## Corrélations brutes
+
+```{r}
+chart.Correlation(quant_data,
+                  histogram = TRUE,
+                  pch = 19)
+```
+
+Il apparaît que les distributions des surfaces communales `comm_surf` et du nombre d'espèces `nb_esp` sont très asymétriques donc on les log-transforme.
+
+Les variables `gtm_nat` et `gtm_tot` sont très fortement liées $\Rightarrow$ redondance. On ne conserve que `gtm_tot`.
+
+En bivarié, le nombre d'espèces observées `nb_esp` est avant tout lié à l'effort de prospection `nb_obs`. Viennent ensuite les variables dérivées des GTM puis la surface.
+
+## Corrélations après tri et transformations
+
+```{r}
+quant_data <- quant_data %>% 
+  mutate(comm_surf = log10(comm_surf),
+         nb_obs = log10(nb_obs),
+    #     nb_esp = log10(nb_esp),
+         gtm_heme = log10(gtm_heme)) %>% 
+  select(-gtm_nat)
+```
+
+```{r}
+chart.Correlation(quant_data,
+                  histogram = TRUE,
+                  pch = 19)
+```
+
+# Analyse de la richesse
+
+## Analyse préliminaire
+
+Comme la relation bivariée entre `nb_esp` et `nb_obs` est curvi-linéaire, on introduit un terme quadratique `nb_obs²`.
+
+```{r}
+modele <- lm(nb_esp ~ nb_obs + I(nb_obs^2) + comm_surf + gtm_shannon + gtm_heme + gtm_tot,
+             data = quant_data)
+```
+
+### Résumé du modèle
+
+```{r}
+summary(modele)
+```
+
+### Graphiques de diagnostic
+
+```{r}
+plot(modele)
+```
+
+Sur les graphiques de diagnostic ci-dessus, on voit que pour certaines communes :
+
+- les résidus sont très importants  (= forte erreur du modèle)
+- le "bras de levier" (distance de Cook) est très fort, ce qui indique une influence majeure (exagérée) sur le modèle
+
+
+
+## Suppression des communes qui ne rentrent pas dans le schéma général
+
+Ici on cherche une règle générale qui s'appliquerait à l'ensemble des communes de la région. Il n'est donc pas dérangeant d'écarter des observations "atypiques".
+
+### Identification de ces communes
+
+On utilise une régle "à la hache" consistant à écater les observations dont la distance de Cook excède $4/n$, $n$ étant le nombre d'observations ([ref](https://fr.wikipedia.org/wiki/Distance_de_Cook)).
+
+```{r}
+cd <- cooks.distance(modele) %>% 
+  as.data.frame() %>% 
+  rownames_to_column() %>% 
+  set_names(c("comm_insee", "cooks_distance")) %>% 
+  mutate(quatre_sur_n = 4 / n(),
+         garder = cooks_distance < quatre_sur_n)
+
+communes_a_conserver <- cd %>% 
+  filter(garder) %>% 
+  pull(comm_insee)
+```
+
+### Carte des communes écartées
+
+```{r}
+communes_bzh <- COGiter::communes_geo %>% 
+  mutate(dept = str_sub(DEPCOM, 1, 2)) %>% 
+  filter(dept %in% c("22", "29", "35", "56"))
+
+mapview(communes_bzh %>% filter(!(DEPCOM %in% communes_a_conserver)))
+```
+
+
+### Modèle sans ces communes
+
+```{r}
+quant_data_propre <- quant_data %>% 
+  filter(rownames(quant_data) %in% communes_a_conserver)
+```
+
+```{r}
+modele <- lm(nb_esp ~ nb_obs + I(nb_obs^2) + comm_surf + gtm_shannon + gtm_heme + gtm_tot, data = quant_data_propre)
+```
+
+```{r}
+summary(modele)
+plot(modele)
+```
+
+Les graphiques sont nettement plus satisfaisants.
+
+# Modèle retenu
+
+En dernière étape, on essaye de simplifier le modèle en éliminant les variables qui ne contribuent pas à l'améliorer, par une méthode "pas-à-pas" basée sur le critère d'Akaïke.
+
+## Elagage
+
+```{r}
+modele_final <- MASS::stepAIC(modele)
+
+summary(modele_final)
+```
+
+On voit que la superficie de la commune a été écartée des variables explicatives.
+
+```{r}
+plot(modele_final)
+```
+
+On a toujours quelques observations à forte influence mais les trois autres graphiques sont Ok.
+
+# Richesse potentielle des communes
+
+## Calcul
+
+On utilise le modèle final pour simuler ce que serait la richesse observée dans chaque commune si elle disposait de `r params$nb_obs_simu` observations.
+
+```{r}
+new_data <- quant_data_propre %>% 
+  mutate(nb_obs = log10(params$nb_obs_simu)) # car le nb_obs dans le modèle est en log
+
+prediction <- predict(modele, newdata = new_data) %>% 
+  as.data.frame() %>% 
+  rownames_to_column() %>% 
+  set_names(c("comm_insee", "richesse_pot"))
+```
+
+```{r}
+prediction %>%
+  downloadthis::download_this(
+    output_name = "richesse_potentielle",
+    output_extension = ".xlsx",
+    button_label = "Télécharger en Excel",
+    button_type = "success",
+    has_icon = TRUE,
+    icon = "fa fa-save",
+    csv2 = TRUE,
+  )
+```
+
+
+## Cartographie
+
+```{r}
+donnees_carte <- communes_bzh %>% 
+  left_join(y = prediction,
+            by = c("DEPCOM" = "comm_insee"))
+
+mapview(donnees_carte,
+        zcol = "richesse_pot")
+```
+
