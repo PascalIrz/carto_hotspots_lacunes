@@ -1,0 +1,7 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+/scripts/rsconnect/
+/raw_data/communes_cgtv_variables.zip
+/raw_data/2023_11_14_NiveauConCommune_CGTM_envoi.pdf
